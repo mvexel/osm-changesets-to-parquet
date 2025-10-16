@@ -1,0 +1,13 @@
+[package]
+name = "changesets-to-geoparquet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quick-xml = "0.36"
+parquet = "53"
+arrow = { version = "53", features = ["prettyprint"] }
+bzip2 = "0.4"
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+chrono = "0.4"
