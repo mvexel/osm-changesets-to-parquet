@@ -17,20 +17,20 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: changesets-to-geoparquet
-            asset_name: changesets-to-geoparquet-linux-x86_64
+            artifact_name: changesets-to-parquet
+            asset_name: changesets-to-parquet-linux-x86_64
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: changesets-to-geoparquet
-            asset_name: changesets-to-geoparquet-macos-x86_64
+            artifact_name: changesets-to-parquet
+            asset_name: changesets-to-parquet-macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: changesets-to-geoparquet
-            asset_name: changesets-to-geoparquet-macos-aarch64
+            artifact_name: changesets-to-parquet
+            asset_name: changesets-to-parquet-macos-aarch64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: changesets-to-geoparquet.exe
-            asset_name: changesets-to-geoparquet-windows-x86_64.exe
+            artifact_name: changesets-to-parquet.exe
+            asset_name: changesets-to-parquet-windows-x86_64.exe
 
     steps:
       - name: Checkout code
