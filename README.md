@@ -1,6 +1,8 @@
-# OSM Changeset metadata to GeoParquet
+# OSM Changeset metadata to Parquet
 
-This little tool converts the OSM Changeset metadata dump (.osm.bz2) to a geoparquet file you can query using DuckDB and friends.
+This little tool converts the OSM Changeset metadata dump (.osm.bz2) to a parquet file you can query using DuckDB and friends.
+
+Converting to geoparquet is an option - see examples below.
 
 ## Building
 
@@ -8,7 +10,7 @@ This little tool converts the OSM Changeset metadata dump (.osm.bz2) to a geopar
 cargo build --release
 ```
 
-The compiled binary will be at `target/release/changesets-to-geoparquet`.
+The compiled binary will be at `target/release/changesets-to-parquet`.
 
 Precompiled binaries are also available (look to your right)
 
@@ -19,7 +21,7 @@ First, download a changeset dump file from https://planet.osm.org/.
 Then:
 
 ```bash
-./target/release/changesets-to-geoparquet \
+./target/release/changesets-to-parquet \
   --input changesets-latest.osm.bz2 \
   --output changesets.parquet \
 ```

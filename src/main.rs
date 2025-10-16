@@ -24,7 +24,7 @@ struct Args {
     #[arg(short, long)]
     input: String,
 
-    /// Output GeoParquet file
+    /// Output Parquet file
     #[arg(short, long)]
     output: String,
 
