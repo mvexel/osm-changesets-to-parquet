@@ -11,6 +11,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip-convert:
+        description: 'Skip the conversion step (for testing upload only)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write  # Needed to commit .last-modified tracking
@@ -21,7 +26,7 @@ env:
 
 jobs:
   check-and-process:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # probably should pick a slimmer runner...
 
     steps:
       - name: Checkout code
@@ -45,7 +50,10 @@ jobs:
           fi
 
           # Check if we should process
-          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+          if [ "${{ github.event.inputs.skip-convert }}" = "true" ]; then
+            echo "Skip-convert flag set - will process (testing upload only)"
+            echo "should_process=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.force }}" = "true" ]; then
             echo "Force flag set - will process"
             echo "should_process=true" >> $GITHUB_OUTPUT
           elif [ "$CURRENT_MODIFIED" != "$PREVIOUS_MODIFIED" ]; then
@@ -76,11 +84,11 @@ jobs:
           df -h
 
       - name: Install Rust
-        if: steps.check.outputs.should_process == 'true'
+        if: steps.check.outputs.should_process == 'true' && github.event.inputs.skip-convert != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build release binary
-        if: steps.check.outputs.should_process == 'true'
+        if: steps.check.outputs.should_process == 'true' && github.event.inputs.skip-convert != 'true'
         run: |
           echo "=== Building binary ==="
           cargo build --release
@@ -88,7 +96,7 @@ jobs:
           df -h
 
       - name: Download changeset file
-        if: steps.check.outputs.should_process == 'true'
+        if: steps.check.outputs.should_process == 'true' && github.event.inputs.skip-convert != 'true'
         run: |
           echo "=== Downloading changesets-latest.osm.bz2 ==="
           curl -L -o changesets-latest.osm.bz2 https://planet.osm.org/planet/changesets-latest.osm.bz2
@@ -96,7 +104,7 @@ jobs:
           df -h
 
       - name: Convert to Parquet
-        if: steps.check.outputs.should_process == 'true'
+        if: steps.check.outputs.should_process == 'true' && github.event.inputs.skip-convert != 'true'
         run: |
           echo "=== Converting to Parquet ==="
           TIMESTAMP=$(date +%y%m%d-%H%M)
@@ -110,6 +118,17 @@ jobs:
           echo "=== Removing source file to free space ==="
           rm changesets-latest.osm.bz2
 
+          ls -lh changesets-latest.parquet
+          df -h
+
+      - name: Download existing parquet for testing
+        if: steps.check.outputs.should_process == 'true' && github.event.inputs.skip-convert == 'true'
+        run: |
+          echo "=== Skip-convert mode: downloading existing parquet file ==="
+          TIMESTAMP=$(date +%y%m%d-%H%M)
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_ENV
+          
+          curl -L -o changesets-latest.parquet ${{ env.R2_PUBLIC_URL }}/latest.parquet
           ls -lh changesets-latest.parquet
           df -h
 
@@ -144,8 +163,13 @@ jobs:
           echo "=== Upload complete ==="
           echo "File available at: ${{ env.R2_PUBLIC_URL }}/latest.parquet"
 
-          # Clean up parquet file to free space
-          rm changesets-latest.parquet
+          # Clean up parquet file to free space (skip in test mode to allow re-testing)
+          if [ "${{ github.event.inputs.skip-convert }}" != "true" ]; then
+            rm changesets-latest.parquet
+            echo "Parquet file removed to free space"
+          else
+            echo "Skip-convert mode: keeping parquet file for potential re-testing"
+          fi
           df -h
 
       - name: Generate metadata index
@@ -212,16 +236,9 @@ jobs:
         if: steps.check.outputs.should_process == 'true'
         run: |
           echo "=== Processing Complete ==="
+          echo "new changeset file available at ${{ env.R2_PUBLIC_URL }}/latest.parquet"
           echo ""
-          echo "✅ Successfully processed OSM changesets"
-          echo ""
-          echo "📊 Query directly with DuckDB (no download needed!):"
-          echo "duckdb -c \"SELECT COUNT(*) FROM '${{ env.R2_PUBLIC_URL }}/latest.parquet'\""
-          echo ""
-          echo "📥 Or download for offline use:"
-          echo "curl -O ${{ env.R2_PUBLIC_URL }}/latest.parquet"
-          echo ""
-          echo "📋 Metadata and usage info:"
+          echo "Metadata and usage info:"
           echo "${{ env.R2_PUBLIC_URL }}/index.json"
 
       - name: Cleanup
