@@ -171,18 +171,18 @@ As I am writing this the parquet file should be generating and being uploaded to
 
 ```bash
 # Count all changesets (DuckDB fetches only metadata, ~5-10MB transfer)
-duckdb -c "SELECT COUNT(*) FROM 'https://changesets.osm.lol/latest.parquet'"
+duckdb -c "SELECT COUNT(*) FROM 'https://changesets.osm.lol/changesets.parquet'"
 
 # Find recent MapRoulette changesets
 duckdb -c "SELECT id, user, created_at, description
-           FROM 'https://changesets.osm.lol/latest.parquet'
+           FROM 'https://changesets.osm.lol/changesets.parquet'
            WHERE description ILIKE '%maproulette%'
            AND created_at > '2024-01-01'
            LIMIT 10"
 
 # Analyze changesets in a bounding box (only fetches relevant data!)
 duckdb -c "SELECT user, COUNT(*) as changeset_count
-           FROM 'https://changesets.osm.lol/latest.parquet'
+           FROM 'https://changesets.osm.lol/changesets.parquet'
            WHERE min_lon >= -122.5 AND max_lon <= -122.3
            AND min_lat >= 37.7 AND max_lat <= 37.8
            GROUP BY user

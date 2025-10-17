@@ -113,7 +113,7 @@ jobs:
 
           ./target/release/changesets-to-parquet \
             --input changesets-latest.osm.bz2 \
-            --output changesets-latest.parquet
+            --output changesets-changesets.parquet
 
           # Remove source file immediately to free space
           echo "=== Removing source file to free space ==="
@@ -122,16 +122,16 @@ jobs:
           ls -lh changesets-latest.parquet
           df -h
 
-      - name: Download existing parquet for testing
-        if: steps.check.outputs.should_process == 'true' && github.event.inputs.skip-convert == 'true'
-        run: |
-          echo "=== Skip-convert mode: downloading existing parquet file ==="
-          TIMESTAMP=$(date +%y%m%d-%H%M)
-          echo "timestamp=${TIMESTAMP}" >> $GITHUB_ENV
+      # - name: Download existing parquet for testing
+      #   if: steps.check.outputs.should_process == 'true' && github.event.inputs.skip-convert == 'true'
+      #   run: |
+      #     echo "=== Skip-convert mode: downloading existing parquet file ==="
+      #     TIMESTAMP=$(date +%y%m%d-%H%M)
+      #     echo "timestamp=${TIMESTAMP}" >> $GITHUB_ENV
           
-          curl -L -o changesets-latest.parquet ${{ env.R2_PUBLIC_URL }}/latest.parquet
-          ls -lh changesets-latest.parquet
-          df -h
+      #     curl -L -o changesets-latest.parquet ${{ env.R2_PUBLIC_URL }}/changesets.parquet
+      #     ls -lh changesets-latest.parquet
+      #     df -h
 
       # - name: Install AWS CLI (for S3-compatible operations)
       #   if: steps.check.outputs.should_process == 'true'
@@ -153,16 +153,16 @@ jobs:
         run: |
           echo "=== Uploading to Cloudflare R2 ==="
 
-          # Upload as latest.parquet (overwrite each time - no history retention)
-          echo "Uploading latest.parquet..."
+          # Upload as changesets.parquet (overwrite each time - no history retention)
+          echo "Uploading changesets.parquet..."
           aws s3 cp changesets-latest.parquet \
-            s3://${{ env.R2_BUCKET_NAME }}/latest.parquet \
+            s3://${{ env.R2_BUCKET_NAME }}/changesets.parquet \
             --endpoint-url "$AWS_ENDPOINT_URL" \
             --content-type "application/octet-stream" \
             --metadata "last-modified=${{ steps.check.outputs.current_modified }},timestamp=${{ env.timestamp }}"
 
           echo "=== Upload complete ==="
-          echo "File available at: ${{ env.R2_PUBLIC_URL }}/latest.parquet"
+          echo "File available at: ${{ env.R2_PUBLIC_URL }}/changesets.parquet"
 
           # Clean up parquet file to free space (skip in test mode to allow re-testing)
           if [ "${{ github.event.inputs.skip-convert }}" != "true" ]; then
@@ -183,10 +183,10 @@ jobs:
         run: |
           echo "=== Generating index.json ==="
 
-          # Get file size from latest.parquet
+          # Get file size from changesets.parquet
           FILE_SIZE=$(aws s3api head-object \
             --bucket ${{ env.R2_BUCKET_NAME }} \
-            --key latest.parquet \
+            --key changesets.parquet \
             --endpoint-url "$AWS_ENDPOINT_URL" \
             --query ContentLength \
             --output text)
@@ -199,13 +199,13 @@ jobs:
             "updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "osm_source_modified": "${{ steps.check.outputs.current_modified }}",
             "file": {
-              "url": "${{ env.R2_PUBLIC_URL }}/latest.parquet",
+              "url": "${{ env.R2_PUBLIC_URL }}/changesets.parquet",
               "size_bytes": ${FILE_SIZE},
               "size_mb": $(echo "scale=2; ${FILE_SIZE} / 1024 / 1024" | bc)
             },
             "usage": {
-              "query_remote": "duckdb -c \"SELECT COUNT(*) FROM '${{ env.R2_PUBLIC_URL }}/latest.parquet'\"",
-              "download": "curl -O ${{ env.R2_PUBLIC_URL }}/latest.parquet"
+              "query_remote": "duckdb -c \"SELECT COUNT(*) FROM '${{ env.R2_PUBLIC_URL }}/changesets.parquet'\"",
+              "download": "curl -O ${{ env.R2_PUBLIC_URL }}/changesets.parquet"
             }
           }
           EOF

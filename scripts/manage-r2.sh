@@ -55,7 +55,7 @@ cmd_upload() {
     echo "=== Uploading $file to s3://${R2_BUCKET_NAME}/${basename} ==="
     aws s3 cp "$file" "s3://${R2_BUCKET_NAME}/${basename}" \
         --content-type "application/octet-stream" \
-        --progress
+        # --progress
 
     echo "✅ Upload complete!"
     echo "File should be accessible at your R2 public URL"
@@ -90,7 +90,7 @@ cmd_cleanup() {
         exit 0
     fi
 
-    # Get all parquet files except latest.parquet
+    # Get all parquet files except changesets.parquet
     aws s3 ls "s3://${R2_BUCKET_NAME}/" --recursive | \
         grep -E "changesets-[0-9].*\.parquet$" | \
         awk '{print $4}' | \
@@ -105,7 +105,7 @@ cmd_cleanup() {
 }
 
 cmd_info() {
-    local filename="${1:-latest.parquet}"
+    local filename="${1:-changesets.parquet}"
     echo "=== File info: $filename ==="
     aws s3api head-object \
         --bucket "$R2_BUCKET_NAME" \
@@ -117,7 +117,7 @@ cmd_public_url() {
     echo "=== Your R2 Public URLs ==="
     echo ""
     echo "R2.dev domain (free):"
-    echo "  https://pub-${R2_ACCOUNT_ID}.r2.dev/${R2_BUCKET_NAME}/latest.parquet"
+    echo "  https://pub-${R2_ACCOUNT_ID}.r2.dev/${R2_BUCKET_NAME}/changesets.parquet"
     echo ""
     echo "To set up a custom domain:"
     echo "  1. Go to Cloudflare R2 dashboard"
@@ -132,7 +132,7 @@ cmd_test_duckdb() {
     if [ -z "$url" ]; then
         echo "Error: No URL specified"
         echo "Usage: $0 test-duckdb <public-url>"
-        echo "Example: $0 test-duckdb https://pub-xxx.r2.dev/osm-changesets/latest.parquet"
+        echo "Example: $0 test-duckdb https://pub-xxx.r2.dev/osm-changesets/changesets.parquet"
         exit 1
     fi
 
@@ -163,7 +163,7 @@ Commands:
   upload <file>           Upload a parquet file to R2
   delete <filename>       Delete a file from R2
   cleanup                 Remove old files (keeps 5 most recent)
-  info [filename]         Show metadata for a file (default: latest.parquet)
+  info [filename]         Show metadata for a file (default: changesets.parquet)
   public-url              Show your public R2 URLs
   test-duckdb <url>       Test DuckDB remote query against a URL
   help                    Show this help message
@@ -182,7 +182,7 @@ Examples:
   $0 upload changesets-latest.parquet
 
   # Test remote query
-  $0 test-duckdb https://pub-xxx.r2.dev/osm-changesets/latest.parquet
+  $0 test-duckdb https://pub-xxx.r2.dev/osm-changesets/changesetd.parquet
 
   # Get public URLs
   $0 public-url
