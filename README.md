@@ -165,13 +165,9 @@ COPY (
 100% ▕██████████████████████████████████████▏ (00:02:50.84 elapsed)
 ```
 
-## Automated Pipeline & Remote Querying
+### Querying
 
-This repository includes an automated CI/CD pipeline that processes OSM changesets daily and hosts them on Cloudflare R2 for **direct remote querying** with DuckDB!
-
-### Query Without Downloading
-
-**No download required! Query 150+ million changesets directly over HTTP:**
+As I am writing this the parquet file should be generating and being uploaded to R2 storage. Try:
 
 ```bash
 # Count all changesets (DuckDB fetches only metadata, ~5-10MB transfer)
@@ -193,38 +189,3 @@ duckdb -c "SELECT user, COUNT(*) as changeset_count
            ORDER BY changeset_count DESC
            LIMIT 20"
 ```
-
-**How it works:** DuckDB's HTTP reader uses range requests to fetch only the data chunks it needs. A query that scans 1000 rows might only download 10-50MB instead of the full 500MB file!
-
-**Metadata:** View file info and usage examples at https://changesets.osm.lol/index.json
-
-### Traditional Download (if needed)
-
-```bash
-# Download for offline use or full-scan queries
-curl -O https://changesets.osm.lol/latest.parquet
-
-# Then query locally
-duckdb -c "SELECT COUNT(*) FROM 'latest.parquet'"
-```
-
-### Setup Your Own Pipeline
-
-Want to host your own auto-updating dataset?
-
-1. **Cloudflare R2 Setup** (10GB free, unlimited egress!)
-   - See `docs/CLOUDFLARE-SETUP.md` for step-by-step instructions
-   - Takes ~15 minutes to set up
-
-2. **GitHub Actions** will automatically:
-   - Check daily for new OSM changeset data
-   - Convert to Parquet format
-   - Upload to your R2 bucket
-   - Keep historical versions
-
-**Cost:** $0/month (within free tiers)
-
-See full documentation:
-- `docs/CLOUDFLARE-SETUP.md` - Step-by-step R2 setup
-- `docs/SETUP.md` - GitHub Actions pipeline setup
-- `scripts/manage-r2.sh` - Bucket management helper script
