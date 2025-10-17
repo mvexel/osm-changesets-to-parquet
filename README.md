@@ -164,3 +164,25 @@ COPY (
 ) TO 'changesets_geom.parquet' (FORMAT PARQUET);
 100% ▕██████████████████████████████████████▏ (00:02:50.84 elapsed)
 ```
+
+## Automated Pipeline
+
+This repository includes an automated CI/CD pipeline that:
+- Checks hourly for new changeset data from planet.osm.org
+- Automatically converts and publishes Parquet files
+- Provides a web interface and JSON API for data access
+
+See `docs/SETUP.md` for setup instructions.
+
+### Quick Access to Latest Data
+
+```bash
+# Download the latest processed file directly
+curl -L -o changesets-latest.parquet.gz \
+  https://github.com/mvexel/changesets-to-parquet/releases/latest/download/changesets-latest.parquet.gz
+
+gunzip changesets-latest.parquet.gz
+
+# Query immediately
+duckdb -c "SELECT COUNT(*) FROM 'changesets-latest.parquet'"
+```
