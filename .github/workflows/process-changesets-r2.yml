@@ -64,24 +64,25 @@ jobs:
             echo "should_process=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Free up disk space
-        if: steps.check.outputs.should_process == 'true'
-        run: |
-          echo "=== Initial disk space ==="
-          df -h
 
-          echo "=== Removing unnecessary packages ==="
-          # Remove large packages we don't need
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          sudo apt-get remove -y '^dotnet-.*' '^llvm-.*' 'php.*' '^mongodb-.*' '^mysql-.*' azure-cli google-chrome-stable firefox powershell mono-devel || true
-          sudo apt-get autoremove -y
-          sudo apt-get clean
+      # - name: Free up disk space
+      #   if: steps.check.outputs.should_process == 'true' 
+      #   run: |
+      #     echo "=== Initial disk space ==="
+      #     df -h
 
-          echo "=== After cleanup ==="
-          df -h
+      #     echo "=== Removing unnecessary packages ==="
+      #     # Remove large packages we don't need
+      #     sudo rm -rf /usr/share/dotnet
+      #     sudo rm -rf /opt/ghc
+      #     sudo rm -rf /usr/local/share/boost
+      #     sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+      #     sudo apt-get remove -y '^dotnet-.*' '^llvm-.*' 'php.*' '^mongodb-.*' '^mysql-.*' azure-cli google-chrome-stable firefox powershell mono-devel || true
+      #     sudo apt-get autoremove -y
+      #     sudo apt-get clean
+
+      #     echo "=== After cleanup ==="
+      #     df -h
 
       - name: Install Rust
         if: steps.check.outputs.should_process == 'true' && github.event.inputs.skip-convert != 'true'
