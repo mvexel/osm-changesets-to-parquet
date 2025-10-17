@@ -23,12 +23,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build release binary
-        run: cargo build --release
-
       - name: Check for new changeset file
         id: check
         run: |
@@ -57,6 +51,14 @@ jobs:
             echo "File unchanged - skipping"
             echo "should_process=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Install Rust
+        if: steps.check.outputs.should_process == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        if: steps.check.outputs.should_process == 'true'
+        run: cargo build --release
 
       - name: Download changeset file
         if: steps.check.outputs.should_process == 'true'
