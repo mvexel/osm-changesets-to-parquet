@@ -132,14 +132,14 @@ jobs:
           ls -lh changesets-latest.parquet
           df -h
 
-      - name: Install AWS CLI (for S3-compatible operations)
-        if: steps.check.outputs.should_process == 'true'
-        run: |
-          echo "=== Installing AWS CLI ==="
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          sudo ./aws/install
-          aws --version
+      # - name: Install AWS CLI (for S3-compatible operations)
+      #   if: steps.check.outputs.should_process == 'true'
+      #   run: |
+      #     echo "=== Installing AWS CLI ==="
+      #     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+      #     unzip -q awscliv2.zip
+      #     sudo ./aws/install
+      #     aws --version
 
       - name: Upload to Cloudflare R2
         if: steps.check.outputs.should_process == 'true'
