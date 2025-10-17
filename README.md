@@ -165,24 +165,66 @@ COPY (
 100% ▕██████████████████████████████████████▏ (00:02:50.84 elapsed)
 ```
 
-## Automated Pipeline
+## Automated Pipeline & Remote Querying
 
-This repository includes an automated CI/CD pipeline that:
-- Checks hourly for new changeset data from planet.osm.org
-- Automatically converts and publishes Parquet files
-- Provides a web interface and JSON API for data access
+This repository includes an automated CI/CD pipeline that processes OSM changesets daily and hosts them on Cloudflare R2 for **direct remote querying** with DuckDB!
 
-See `docs/SETUP.md` for setup instructions.
+### Query Without Downloading
 
-### Quick Access to Latest Data
+**No download required! Query 150+ million changesets directly over HTTP:**
 
 ```bash
-# Download the latest processed file directly
-curl -L -o changesets-latest.parquet.gz \
-  https://github.com/mvexel/changesets-to-parquet/releases/latest/download/changesets-latest.parquet.gz
+# Count all changesets (DuckDB fetches only metadata, ~5-10MB transfer)
+duckdb -c "SELECT COUNT(*) FROM 'https://changesets.osm.lol/latest.parquet'"
 
-gunzip changesets-latest.parquet.gz
+# Find recent MapRoulette changesets
+duckdb -c "SELECT id, user, created_at, description
+           FROM 'https://changesets.osm.lol/latest.parquet'
+           WHERE description ILIKE '%maproulette%'
+           AND created_at > '2024-01-01'
+           LIMIT 10"
 
-# Query immediately
-duckdb -c "SELECT COUNT(*) FROM 'changesets-latest.parquet'"
+# Analyze changesets in a bounding box (only fetches relevant data!)
+duckdb -c "SELECT user, COUNT(*) as changeset_count
+           FROM 'https://changesets.osm.lol/latest.parquet'
+           WHERE min_lon >= -122.5 AND max_lon <= -122.3
+           AND min_lat >= 37.7 AND max_lat <= 37.8
+           GROUP BY user
+           ORDER BY changeset_count DESC
+           LIMIT 20"
 ```
+
+**How it works:** DuckDB's HTTP reader uses range requests to fetch only the data chunks it needs. A query that scans 1000 rows might only download 10-50MB instead of the full 500MB file!
+
+**Metadata:** View file info and usage examples at https://changesets.osm.lol/index.json
+
+### Traditional Download (if needed)
+
+```bash
+# Download for offline use or full-scan queries
+curl -O https://changesets.osm.lol/latest.parquet
+
+# Then query locally
+duckdb -c "SELECT COUNT(*) FROM 'latest.parquet'"
+```
+
+### Setup Your Own Pipeline
+
+Want to host your own auto-updating dataset?
+
+1. **Cloudflare R2 Setup** (10GB free, unlimited egress!)
+   - See `docs/CLOUDFLARE-SETUP.md` for step-by-step instructions
+   - Takes ~15 minutes to set up
+
+2. **GitHub Actions** will automatically:
+   - Check daily for new OSM changeset data
+   - Convert to Parquet format
+   - Upload to your R2 bucket
+   - Keep historical versions
+
+**Cost:** $0/month (within free tiers)
+
+See full documentation:
+- `docs/CLOUDFLARE-SETUP.md` - Step-by-step R2 setup
+- `docs/SETUP.md` - GitHub Actions pipeline setup
+- `scripts/manage-r2.sh` - Bucket management helper script

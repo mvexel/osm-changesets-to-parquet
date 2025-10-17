@@ -1,0 +1,235 @@
+name: Process OSM Changesets to R2
+
+on:
+  schedule:
+    # Run daily at 00:05 UTC (changesets-latest.osm.bz2 updates weekly, but schedule is irregular)
+    - cron: '5 0 * * *'
+  workflow_dispatch: # Allow manual triggering
+    inputs:
+      force:
+        description: 'Force download and process even if file hasnt changed'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write  # Needed to commit .last-modified tracking
+
+env:
+  R2_BUCKET_NAME: osm-changesets
+  R2_PUBLIC_URL: https://changesets.osm.lol
+
+jobs:
+  check-and-process:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for new changeset file
+        id: check
+        run: |
+          # Get the current Last-Modified header from the changesets file
+          CURRENT_MODIFIED=$(curl -sI https://planet.osm.org/planet/changesets-latest.osm.bz2 | grep -i "last-modified" | cut -d' ' -f2-)
+          echo "Current Last-Modified: $CURRENT_MODIFIED"
+          echo "current_modified=$CURRENT_MODIFIED" >> $GITHUB_OUTPUT
+
+          # Get the previously stored Last-Modified (if it exists)
+          if [ -f .last-modified ]; then
+            PREVIOUS_MODIFIED=$(cat .last-modified)
+            echo "Previous Last-Modified: $PREVIOUS_MODIFIED"
+          else
+            PREVIOUS_MODIFIED=""
+            echo "No previous Last-Modified found"
+          fi
+
+          # Check if we should process
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "Force flag set - will process"
+            echo "should_process=true" >> $GITHUB_OUTPUT
+          elif [ "$CURRENT_MODIFIED" != "$PREVIOUS_MODIFIED" ]; then
+            echo "File has changed - will process"
+            echo "should_process=true" >> $GITHUB_OUTPUT
+          else
+            echo "File unchanged - skipping"
+            echo "should_process=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Free up disk space
+        if: steps.check.outputs.should_process == 'true'
+        run: |
+          echo "=== Initial disk space ==="
+          df -h
+
+          echo "=== Removing unnecessary packages ==="
+          # Remove large packages we don't need
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo apt-get remove -y '^dotnet-.*' '^llvm-.*' 'php.*' '^mongodb-.*' '^mysql-.*' azure-cli google-chrome-stable firefox powershell mono-devel || true
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+
+          echo "=== After cleanup ==="
+          df -h
+
+      - name: Install Rust
+        if: steps.check.outputs.should_process == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        if: steps.check.outputs.should_process == 'true'
+        run: |
+          echo "=== Building binary ==="
+          cargo build --release
+          ls -lh target/release/changesets-to-parquet
+          df -h
+
+      - name: Download changeset file
+        if: steps.check.outputs.should_process == 'true'
+        run: |
+          echo "=== Downloading changesets-latest.osm.bz2 ==="
+          curl -L -o changesets-latest.osm.bz2 https://planet.osm.org/planet/changesets-latest.osm.bz2
+          ls -lh changesets-latest.osm.bz2
+          df -h
+
+      - name: Convert to Parquet
+        if: steps.check.outputs.should_process == 'true'
+        run: |
+          echo "=== Converting to Parquet ==="
+          TIMESTAMP=$(date +%y%m%d-%H%M)
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_ENV
+
+          ./target/release/changesets-to-parquet \
+            --input changesets-latest.osm.bz2 \
+            --output changesets-latest.parquet
+
+          # Remove source file immediately to free space
+          echo "=== Removing source file to free space ==="
+          rm changesets-latest.osm.bz2
+
+          ls -lh changesets-latest.parquet
+          df -h
+
+      - name: Install AWS CLI (for S3-compatible operations)
+        if: steps.check.outputs.should_process == 'true'
+        run: |
+          echo "=== Installing AWS CLI ==="
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install
+          aws --version
+
+      - name: Upload to Cloudflare R2
+        if: steps.check.outputs.should_process == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 endpoint format: https://<account-id>.r2.cloudflarestorage.com
+          AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          echo "=== Uploading to Cloudflare R2 ==="
+
+          # Upload as latest.parquet (overwrite each time - no history retention)
+          echo "Uploading latest.parquet..."
+          aws s3 cp changesets-latest.parquet \
+            s3://${{ env.R2_BUCKET_NAME }}/latest.parquet \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --content-type "application/octet-stream" \
+            --metadata "last-modified=${{ steps.check.outputs.current_modified }},timestamp=${{ env.timestamp }}"
+
+          echo "=== Upload complete ==="
+          echo "File available at: ${{ env.R2_PUBLIC_URL }}/latest.parquet"
+
+          # Clean up parquet file to free space
+          rm changesets-latest.parquet
+          df -h
+
+      - name: Generate metadata index
+        if: steps.check.outputs.should_process == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          echo "=== Generating index.json ==="
+
+          # Get file size from latest.parquet
+          FILE_SIZE=$(aws s3api head-object \
+            --bucket ${{ env.R2_BUCKET_NAME }} \
+            --key latest.parquet \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --query ContentLength \
+            --output text)
+
+          # Create a simple JSON index (single file, no history)
+          cat > index.json <<EOF
+          {
+            "repository": "${{ github.repository }}",
+            "description": "OSM Changeset metadata in Parquet format - Query directly with DuckDB!",
+            "updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "osm_source_modified": "${{ steps.check.outputs.current_modified }}",
+            "file": {
+              "url": "${{ env.R2_PUBLIC_URL }}/latest.parquet",
+              "size_bytes": ${FILE_SIZE},
+              "size_mb": $(echo "scale=2; ${FILE_SIZE} / 1024 / 1024" | bc)
+            },
+            "usage": {
+              "query_remote": "duckdb -c \"SELECT COUNT(*) FROM '${{ env.R2_PUBLIC_URL }}/latest.parquet'\"",
+              "download": "curl -O ${{ env.R2_PUBLIC_URL }}/latest.parquet"
+            }
+          }
+          EOF
+
+          cat index.json
+
+          # Upload index
+          aws s3 cp index.json \
+            s3://${{ env.R2_BUCKET_NAME }}/index.json \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --content-type "application/json" \
+            --cache-control "max-age=3600"
+
+          echo "Index uploaded: ${{ env.R2_PUBLIC_URL }}/index.json"
+
+      - name: Update Last-Modified tracking
+        if: steps.check.outputs.should_process == 'true'
+        run: |
+          echo "=== Updating .last-modified tracking ==="
+          echo "${{ steps.check.outputs.current_modified }}" > .last-modified
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .last-modified
+          git commit -m "Update last-modified timestamp: ${{ env.timestamp }}" || echo "No changes to commit"
+          git push || echo "Nothing to push"
+
+      - name: Summary
+        if: steps.check.outputs.should_process == 'true'
+        run: |
+          echo "=== Processing Complete ==="
+          echo ""
+          echo "✅ Successfully processed OSM changesets"
+          echo ""
+          echo "📊 Query directly with DuckDB (no download needed!):"
+          echo "duckdb -c \"SELECT COUNT(*) FROM '${{ env.R2_PUBLIC_URL }}/latest.parquet'\""
+          echo ""
+          echo "📥 Or download for offline use:"
+          echo "curl -O ${{ env.R2_PUBLIC_URL }}/latest.parquet"
+          echo ""
+          echo "📋 Metadata and usage info:"
+          echo "${{ env.R2_PUBLIC_URL }}/index.json"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "=== Cleaning up ==="
+          rm -f changesets-latest.osm.bz2
+          rm -f changesets-*.parquet
+          rm -f awscliv2.zip
+          rm -rf aws
+          df -h
