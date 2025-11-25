@@ -36,7 +36,8 @@ jobs:
         id: check
         run: |
           # Get the current Last-Modified header from the changesets file
-          CURRENT_MODIFIED=$(curl -sI https://planet.osm.org/planet/changesets-latest.osm.bz2 | grep -i "last-modified" | cut -d' ' -f2-)
+          # Note: tr -d '\r' removes carriage returns from HTTP headers to ensure proper string comparison
+          CURRENT_MODIFIED=$(curl -sI https://planet.osm.org/planet/changesets-latest.osm.bz2 | tr -d '\r' | grep -i "last-modified" | cut -d' ' -f2-)
           echo "Current Last-Modified: $CURRENT_MODIFIED"
           echo "current_modified=$CURRENT_MODIFIED" >> $GITHUB_OUTPUT
 
