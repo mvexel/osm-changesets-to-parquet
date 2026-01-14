@@ -52,6 +52,7 @@ struct Changeset {
     num_changes: u32,
     comments_count: u32,
     description: Option<String>,
+    created_by: Option<String>,
 }
 
 struct BatchBuilders {
@@ -68,6 +69,7 @@ struct BatchBuilders {
     num_changes: UInt32Builder,
     comments_count: UInt32Builder,
     description: StringBuilder,
+    created_by: StringBuilder,
     len: usize,
 }
 
@@ -90,6 +92,7 @@ impl BatchBuilders {
             num_changes: UInt32Builder::with_capacity(capacity),
             comments_count: UInt32Builder::with_capacity(capacity),
             description: StringBuilder::with_capacity(capacity, string_byte_capacity),
+            created_by: StringBuilder::with_capacity(capacity, string_byte_capacity),
             len: 0,
         }
     }
@@ -156,6 +159,12 @@ impl BatchBuilders {
             self.description.append_null();
         }
 
+        if let Some(ref created_by) = cs.created_by {
+            self.created_by.append_value(created_by);
+        } else {
+            self.created_by.append_null();
+        }
+
         self.len += 1;
     }
 
@@ -182,6 +191,7 @@ impl BatchBuilders {
             Arc::new(self.num_changes.finish()),
             Arc::new(self.comments_count.finish()),
             Arc::new(self.description.finish()),
+            Arc::new(self.created_by.finish()),
         ];
 
         let batch = RecordBatch::try_new(schema.clone(), columns)?;
@@ -240,6 +250,8 @@ fn apply_changeset_tag(e: &BytesStart, changeset: &mut Changeset) -> Result<()> 
     if let (Some(k), Some(v)) = (key, value) {
         if k == "comment" {
             changeset.description = Some(v);
+        } else if k == "created_by" {
+            changeset.created_by = Some(v);
         }
     }
 
@@ -404,6 +416,7 @@ fn create_schema() -> Arc<Schema> {
         Field::new("num_changes", DataType::UInt32, false),
         Field::new("comments_count", DataType::UInt32, false),
         Field::new("description", DataType::Utf8, true),
+        Field::new("created_by", DataType::Utf8, true),
     ]))
 }
 
